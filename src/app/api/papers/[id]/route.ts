@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { isValidUrl } from "@/lib/utils";
+import { isValidUrl, verifyAdminPassword, validateStringLength } from "@/lib/utils";
 
 export async function GET(
   request: NextRequest,
@@ -40,7 +40,7 @@ export async function PUT(
     const { password, title, authors, year, journal, link, abstract: abstractText } = body;
 
     // Verify admin password
-    if (!password || password !== process.env.ADMIN_PASSWORD) {
+    if (!verifyAdminPassword(password)) {
       return NextResponse.json({ error: "비밀번호가 올바르지 않습니다." }, { status: 401 });
     }
 
@@ -63,6 +63,12 @@ export async function PUT(
     }
     if (link && typeof link === "string" && link.trim() !== "" && !isValidUrl(link)) {
       errors.link = "유효한 URL 형식이 아닙니다.";
+    }
+
+    // Validate field lengths
+    for (const [field, value] of Object.entries({ title, authors, journal, link, abstract: abstractText })) {
+      const err = validateStringLength(value as string, field as "title" | "authors" | "journal" | "link" | "abstract");
+      if (err) errors[field === "abstract" ? "abstract" : field] = err;
     }
 
     if (Object.keys(errors).length > 0) {
@@ -107,7 +113,7 @@ export async function DELETE(
     const { password } = body;
 
     // Verify admin password
-    if (!password || password !== process.env.ADMIN_PASSWORD) {
+    if (!verifyAdminPassword(password)) {
       return NextResponse.json({ error: "비밀번호가 올바르지 않습니다." }, { status: 401 });
     }
 

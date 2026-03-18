@@ -4,12 +4,15 @@ import { prisma } from "@/lib/prisma";
 import SearchBar from "@/components/SearchBar";
 import type { Paper } from "@/types/paper";
 
+const PAGE_SIZE = 20;
+
 interface HomeProps {
   searchParams: Promise<{
     query?: string;
     year?: string;
     sortBy?: string;
     order?: string;
+    page?: string;
   }>;
 }
 
@@ -19,6 +22,7 @@ export default async function Home({ searchParams }: HomeProps) {
   const year = params.year || "";
   const sortBy = params.sortBy || "createdAt";
   const order = params.order || "desc";
+  const page = Math.max(1, parseInt(params.page || "1", 10) || 1);
 
   const where: Record<string, unknown> = {};
   if (query) {
@@ -38,10 +42,17 @@ export default async function Home({ searchParams }: HomeProps) {
   const safeSortBy = validSortFields.includes(sortBy) ? sortBy : "createdAt";
   const safeOrder = validOrders.includes(order) ? order : "desc";
 
-  const [papers, yearResults] = await Promise.all([
-    prisma.paper.findMany({ where, orderBy: { [safeSortBy]: safeOrder } }) as Promise<Paper[]>,
+  const [papers, totalCount, yearResults] = await Promise.all([
+    prisma.paper.findMany({
+      where,
+      orderBy: { [safeSortBy]: safeOrder },
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+    }) as Promise<Paper[]>,
+    prisma.paper.count({ where }),
     prisma.paper.findMany({ select: { year: true }, distinct: ["year"], orderBy: { year: "desc" } }),
   ]);
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
   const availableYears = yearResults.map((r) => r.year);
   const hasActiveFilters = query !== "" || year !== "" || safeSortBy !== "createdAt" || safeOrder !== "desc";
@@ -176,9 +187,34 @@ export default async function Home({ searchParams }: HomeProps) {
         </div>
       )}
 
-      <p className="mt-4 text-[10px] font-black uppercase tracking-widest opacity-30">
-        {hasActiveFilters ? `${papers.length} Results` : `${papers.length} Papers`}
-      </p>
+      <div className="mt-4 flex items-center justify-between">
+        <p className="text-[10px] font-black uppercase tracking-widest opacity-30">
+          {hasActiveFilters ? `${totalCount} Results` : `${totalCount} Papers`}
+        </p>
+        {totalPages > 1 && (
+          <div className="flex items-center gap-2">
+            {page > 1 && (
+              <Link
+                href={`/?${new URLSearchParams({ ...(query && { query }), ...(year && { year }), sortBy: safeSortBy, order: safeOrder, page: String(page - 1) }).toString()}`}
+                className="rounded-sm border border-border px-3 py-1.5 text-[10px] font-black uppercase tracking-widest transition-colors hover:border-text hover:bg-text hover:text-white"
+              >
+                Prev
+              </Link>
+            )}
+            <span className="text-[10px] font-black uppercase tracking-widest opacity-40">
+              {page} / {totalPages}
+            </span>
+            {page < totalPages && (
+              <Link
+                href={`/?${new URLSearchParams({ ...(query && { query }), ...(year && { year }), sortBy: safeSortBy, order: safeOrder, page: String(page + 1) }).toString()}`}
+                className="rounded-sm border border-border px-3 py-1.5 text-[10px] font-black uppercase tracking-widest transition-colors hover:border-text hover:bg-text hover:text-white"
+              >
+                Next
+              </Link>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

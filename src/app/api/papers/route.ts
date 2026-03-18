@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { isValidUrl } from "@/lib/utils";
+import { isValidUrl, validateStringLength } from "@/lib/utils";
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -28,12 +28,24 @@ export async function GET(request: NextRequest) {
   const safeSortBy = validSortFields.includes(sortBy) ? sortBy : "createdAt";
   const safeOrder = validOrders.includes(order) ? order : "desc";
 
-  const papers = await prisma.paper.findMany({
-    where,
-    orderBy: { [safeSortBy]: safeOrder },
-  });
+  const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "20", 10) || 20));
+  const skip = (page - 1) * limit;
 
-  return NextResponse.json(papers);
+  const [papers, total] = await Promise.all([
+    prisma.paper.findMany({
+      where,
+      orderBy: { [safeSortBy]: safeOrder },
+      skip,
+      take: limit,
+    }),
+    prisma.paper.count({ where }),
+  ]);
+
+  return NextResponse.json({
+    papers,
+    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -56,6 +68,12 @@ export async function POST(request: NextRequest) {
     // Validate optional URL
     if (link && typeof link === "string" && link.trim() !== "" && !isValidUrl(link)) {
       errors.link = "유효한 URL 형식이 아닙니다.";
+    }
+
+    // Validate field lengths
+    for (const [field, value] of Object.entries({ title, authors, journal, link, abstract: abstractText })) {
+      const err = validateStringLength(value as string, field as "title" | "authors" | "journal" | "link" | "abstract");
+      if (err) errors[field === "abstract" ? "abstract" : field] = err;
     }
 
     if (Object.keys(errors).length > 0) {
