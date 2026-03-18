@@ -1,0 +1,20 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Paper {
+  id        Int      @id @default(autoincrement())
+  title     String
+  authors   String
+  year      Int
+  journal   String?
+  link      String?
+  abstract  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
